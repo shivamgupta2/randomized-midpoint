@@ -121,18 +121,22 @@ def randomized_midpoint_forward(
         if used_randomized_midpoint_flag:
             used_randomized_midpoint_flag = False
             continue
-        if t < 1000:
+        if t < 300:
             use_randomized_midpoint = False
         # 1. predict noise model_output
         model_output = self.unet(image, t).sample
-
+        print('t:', t)
         if use_randomized_midpoint:
-            randomized_midpoint_output, midpoint_timestep, randomized_midpoint_exp_alpha_h, randomized_midpoint_beta_prod_t = self.scheduler.step(model_output, t, image, eta=eta, use_clipped_model_output=use_clipped_model_output, generator=generator, get_randomized_midpoint=True)
+            randomized_midpoint_output, midpoint_timestep, randomized_midpoint_exp_alpha_h, randomized_midpoint_beta_prod_t = self.scheduler.step(model_output, t, image, eta=eta, use_clipped_model_output=use_clipped_model_output, generator=generator, get_randomized_midpoint=False, get_deterministic_midpoint=True)
+            print('midpoint timestep:', midpoint_timestep)
             randomized_midpoint = randomized_midpoint_output.prev_sample
 
             model_output = self.unet(randomized_midpoint.half(), midpoint_timestep).sample
-            image, _ = self.scheduler.step(
+            #image, _ = self.scheduler.step(
+                #model_output, t, image, eta=eta, use_clipped_model_output=use_clipped_model_output, generator=generator, randomized_midpoint_second_step = True, randomized_midpoint_exp_alpha_h=randomized_midpoint_exp_alpha_h, randomized_midpoint_beta_prod_t = randomized_midpoint_beta_prod_t)
+            image , prev_timestep= self.scheduler.step(
                 model_output, t, image, eta=eta, use_clipped_model_output=use_clipped_model_output, generator=generator, randomized_midpoint_second_step = True, randomized_midpoint_exp_alpha_h=randomized_midpoint_exp_alpha_h, randomized_midpoint_beta_prod_t = randomized_midpoint_beta_prod_t)
+            print('second midpoint timestep:', prev_timestep)
             used_randomized_midpoint_flag = True
             #image, _ = self.scheduler.step(
                     #model_output, t, image, eta=eta, use_clipped_model_output=use_clipped_model_output, generator=generator)

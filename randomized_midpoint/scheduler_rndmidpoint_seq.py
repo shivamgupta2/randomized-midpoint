@@ -95,7 +95,7 @@ class RandomizedMidpointScheduler(DDIMScheduler):
             prev_timestep = timestep - 2 * (self.config.num_train_timesteps//self.num_inference_steps)
         elif get_deterministic_midpoint:
             midpoint_loc = torch.ones(batch_size, device = model_output.device) * 0.5
-            prev_timestep = timestep - (midpoint_loc * (self.config.num_train_timesteps/self.num_inference_steps)).long()
+            prev_timestep = timestep - ((2 * midpoint_loc).long() * (self.config.num_train_timesteps/self.num_inference_steps)).long()
         else:
             # 1. get previous step value (=t-1)
             prev_timestep = timestep - self.config.num_train_timesteps//self.num_inference_steps
@@ -171,9 +171,11 @@ class RandomizedMidpointScheduler(DDIMScheduler):
         elif randomized_midpoint_second_step:
             print('second step')
             #h_est = torch.log((alpha_prod_t_prev/alpha_prod_t)**(0.5))
-            h_est = torch.log((alpha_prod_t_prev ** (0.5))/(alpha_prod_t ** (0.5)))
+            #h_est = torch.log((alpha_prod_t_prev ** (0.5))/(alpha_prod_t ** (0.5)))
             #prev_sample = (alpha_prod_t_prev/alpha_prod_t) ** (0.5) * sample + torch.einsum('i,ijkl->ijkl', h_est * torch.exp((1 - randomized_midpoint_locs) * h_est), score_est)
-            prev_sample = (alpha_prod_t_prev/alpha_prod_t) ** (0.5) * sample + torch.einsum('i,ijkl->ijkl', h_est * ((alpha_prod_t_prev ** (0.5))/(alpha_prod_t ** (0.5)))/randomized_midpoint_exp_alpha_h, score_est)
+            #prev_sample = (alpha_prod_t_prev/alpha_prod_t) ** (0.5) * sample + torch.einsum('i,ijkl->ijkl', h_est * ((alpha_prod_t_prev ** (0.5))/(alpha_prod_t ** (0.5)))/randomized_midpoint_exp_alpha_h, score_est)
+            pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * pred_epsilon
+            prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
         else:
             #DDIM
             # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
@@ -206,12 +208,12 @@ class RandomizedMidpointScheduler(DDIMScheduler):
             prev_sample = prev_sample + variance
 
         if not return_dict:
-            if get_randomized_midpoint:
+            if get_randomized_midpoint or get_deterministic_midpoint:
                 return prev_sample, prev_timestep.to(model_output.device), (alpha_prod_t_prev ** (0.5))/(alpha_prod_t ** (0.5)), beta_prod_t
             else:
-                return prev_sample
+                return prev_sample, prev_timestep.to(model_output.device)
 
-        if get_randomized_midpoint:
+        if get_randomized_midpoint or get_deterministic_midpoint:
             #return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample), prev_timestep.to(model_output.device), midpoint_loc
             return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample), prev_timestep.to(model_output.device), (alpha_prod_t_prev ** (0.5))/(alpha_prod_t ** (0.5)), beta_prod_t
         else:
