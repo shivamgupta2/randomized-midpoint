@@ -1,10 +1,57 @@
 from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput, DDIMScheduler
+import numpy as np
 
 from typing import List, Tuple, Union, Optional
 import torch
 from diffusers.utils.torch_utils import randn_tensor
 
 class RandomizedMidpointScheduler(DDIMScheduler):
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+        """
+        Sets the discrete timesteps used for the diffusion chain (to be run before inference).
+
+        Args:
+            num_inference_steps (`int`):
+                The number of diffusion steps used when generating samples with a pre-trained model.
+        """
+
+        if num_inference_steps > self.config.num_train_timesteps:
+            raise ValueError(
+                f"`num_inference_steps`: {num_inference_steps} cannot be larger than `self.config.train_timesteps`:"
+                f" {self.config.num_train_timesteps} as the unet model trained with this scheduler can only handle"
+                f" maximal {self.config.num_train_timesteps} timesteps."
+            )
+
+        self.config.timestep_spacing='trailing'
+        print('setting timesteps, timestep spacing:', self.config.timestep_spacing)
+        self.num_inference_steps = num_inference_steps
+
+        # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+        if self.config.timestep_spacing == "linspace":
+            timesteps = (
+                np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps)
+                .round()[::-1]
+                .copy()
+                .astype(np.int64)
+            )
+        elif self.config.timestep_spacing == "leading":
+            step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+            timesteps += self.config.steps_offset
+        elif self.config.timestep_spacing == "trailing":
+            step_ratio = self.config.num_train_timesteps / self.num_inference_steps
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = np.round(np.arange(self.config.num_train_timesteps, 0, -step_ratio)).astype(np.int64)
+            timesteps -= 1
+        else:
+            raise ValueError(
+                f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'leading' or 'trailing'."
+            )
+
+        self.timesteps = torch.from_numpy(timesteps).to(device)
 
     def _get_variance(self, timestep, prev_timestep, get_randomized_midpoint=False):
         device = self.device
@@ -90,15 +137,18 @@ class RandomizedMidpointScheduler(DDIMScheduler):
             midpoint_loc = torch.rand(batch_size, device=model_output.device)
 
             # 1. get previous step value (=t-1)
-            prev_timestep = timestep - (2 * midpoint_loc * (self.config.num_train_timesteps // self.num_inference_steps)).long()
+            #prev_timestep = timestep - (2 * midpoint_loc * (self.config.num_train_timesteps // self.num_inference_steps)).long()
+            prev_timestep = timestep - (midpoint_loc * (self.config.num_train_timesteps // self.num_inference_steps)).long()
         elif randomized_midpoint_second_step:
-            prev_timestep = timestep - 2 * (self.config.num_train_timesteps//self.num_inference_steps)
+            prev_timestep = timestep - (self.config.num_train_timesteps//self.num_inference_steps)
+            print('prev timestep:', prev_timestep)
         elif get_deterministic_midpoint:
             midpoint_loc = torch.ones(batch_size, device = model_output.device) * 0.5
-            prev_timestep = timestep - ((2 * midpoint_loc).long() * (self.config.num_train_timesteps/self.num_inference_steps)).long()
+            prev_timestep = timestep - ((midpoint_loc).long() * (self.config.num_train_timesteps/self.num_inference_steps)).long()
         else:
             # 1. get previous step value (=t-1)
             prev_timestep = timestep - self.config.num_train_timesteps//self.num_inference_steps
+            print('prev timestep:', prev_timestep)
             step_size = self.config.num_train_timesteps//self.num_inference_steps
 
 

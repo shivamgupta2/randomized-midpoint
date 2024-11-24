@@ -114,20 +114,24 @@ def randomized_midpoint_forward(
         image = randn_tensor(image_shape, generator=generator, device=self._execution_device, dtype=self.unet.dtype)
 
     # set step values
+    print('timestep spacing:',self.scheduler.timestep_spacing)
     self.scheduler.set_timesteps(num_inference_steps)
+    print(self.scheduler)
+    #exit()
 
-    used_randomized_midpoint_flag = False
+    #used_randomized_midpoint_flag = False
     for t in self.progress_bar(self.scheduler.timesteps):
-        if used_randomized_midpoint_flag:
-            used_randomized_midpoint_flag = False
-            continue
-        if t < 300:
-            use_randomized_midpoint = False
+        print(t)
+        #if used_randomized_midpoint_flag:
+        #    used_randomized_midpoint_flag = False
+        #    continue
+        #if t < 300:
+            #use_randomized_midpoint = False
         # 1. predict noise model_output
         model_output = self.unet(image, t).sample
         print('t:', t)
         if use_randomized_midpoint:
-            randomized_midpoint_output, midpoint_timestep, randomized_midpoint_exp_alpha_h, randomized_midpoint_beta_prod_t = self.scheduler.step(model_output, t, image, eta=eta, use_clipped_model_output=use_clipped_model_output, generator=generator, get_randomized_midpoint=False, get_deterministic_midpoint=True)
+            randomized_midpoint_output, midpoint_timestep, randomized_midpoint_exp_alpha_h, randomized_midpoint_beta_prod_t = self.scheduler.step(model_output, t, image, eta=eta, use_clipped_model_output=use_clipped_model_output, generator=generator, get_randomized_midpoint=True, get_deterministic_midpoint=False)
             print('midpoint timestep:', midpoint_timestep)
             randomized_midpoint = randomized_midpoint_output.prev_sample
 
@@ -137,7 +141,7 @@ def randomized_midpoint_forward(
             image , prev_timestep= self.scheduler.step(
                 model_output, t, image, eta=eta, use_clipped_model_output=use_clipped_model_output, generator=generator, randomized_midpoint_second_step = True, randomized_midpoint_exp_alpha_h=randomized_midpoint_exp_alpha_h, randomized_midpoint_beta_prod_t = randomized_midpoint_beta_prod_t)
             print('second midpoint timestep:', prev_timestep)
-            used_randomized_midpoint_flag = True
+            #used_randomized_midpoint_flag = True
             #image, _ = self.scheduler.step(
                     #model_output, t, image, eta=eta, use_clipped_model_output=use_clipped_model_output, generator=generator)
         # 2. predict previous mean of image x_t-1 and add variance depending on eta
