@@ -34,16 +34,23 @@ def run(rank):
     pipe_ddim = DDIMPipeline.from_pretrained(model_str, torch_dtype=torch.float16)
     pipe_ddim = pipe_ddim.to(f'cuda:{rank}')
     pipe_ddim.scheduler = RandomizedMidpointScheduler.from_config(pipe_ddim.scheduler.config)
+    #pipe_ddim.scheduler.set_timestep_spacing('trailing')
+    if hasattr(pipe_ddim.scheduler, "config"):
+        pipe_ddim.scheduler.config["timestep_spacing"] = "trailing"
+
+    #pipe_ddim.scheduler['timestep_spacing'] = 'trailing'
+    #print(pipe_ddim.scheduler)
+    #exit()
     pipe_ddim.randomized_midpoint_forward = types.MethodType(randomized_midpoint_forward, pipe_ddim)
-    pipe_ddim.scheduler.timestep_scaling = 'trailing'
     pipe_ddim.unet.eval()
 
     #Initialize the Randomized Midpoint pipeline
     pipe_rnd = DDIMPipeline.from_pretrained(model_str, torch_dtype=torch.float16)
     pipe_rnd.to(f'cuda:{rank}')
     pipe_rnd.scheduler = RandomizedMidpointScheduler.from_config(pipe_rnd.scheduler.config)
+    if hasattr(pipe_rnd.scheduler, "config"):
+        pipe_rnd.scheduler.config["timestep_spacing"] = "trailing"
     pipe_rnd.randomized_midpoint_forward = types.MethodType(randomized_midpoint_forward, pipe_rnd)
-    pipe_rnd.scheduler.timestep_scaling = 'trailing'
     pipe_rnd.unet.eval()
 
 
@@ -55,7 +62,7 @@ def run(rank):
     #nfes_list = [200, 500, 1000]
     #nfes_list = [6, 12, 18, 24, 30]
     #nfes_list = [40, 50, 60, 70]
-    nfes_list = [10]
+    nfes_list = [10, 20, 30, 40, 50, 100, 200]
     long_nfes = 1000
 
     total_num_images = 50000
@@ -88,7 +95,7 @@ def run(rank):
             #Randomized midpoint output
             rnd_midpoint_out_dir = f'results/randomized_midpoint_{model_label}_nfes_{nfes}'
             os.makedirs(rnd_midpoint_out_dir, exist_ok=True)
-            images_rnd = pipe_rnd.randomized_midpoint_forward(latents=latents, num_inference_steps=nfes, use_randomized_midpoint=True).images
+            images_rnd = pipe_rnd.randomized_midpoint_forward(latents=latents, num_inference_steps=nfes//2, use_randomized_midpoint=True).images
             for i, image_rnd in enumerate(images_rnd):
                 image_path_rnd = os.path.join(rnd_midpoint_out_dir, f'rnd_midpoint_{nfes:03d}_steps_{ind + i}.png')
                 image_rnd.save(image_path_rnd)
